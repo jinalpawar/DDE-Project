@@ -1,9 +1,10 @@
 
 import pandas as pd
 
-# Define the file paths for the input CSVs and the output file.
-file_pop_data = '/data/eq_pop04_page_linear.csv'
-file_sdg_data = '/data/sdg_08_10_page_linear.csv'
+# Define the file paths for the input CSVs and the KOFGI Excel file, and the output file.
+file_pop_data = 'data/eq_pop04_page_linear.csv'
+file_sdg_data = 'data/sdg_08_10_page_linear.csv'
+file_kofgi_data = 'data/KOFGI_2025_public.xlsx'
 output_csv_path = 'output/combined_data.csv'
 
 # The provided country mapping.
@@ -19,14 +20,15 @@ country_mapping = {
 # Invert the country mapping to map country names to IDs
 country_name_to_id_map = {name: id for id, name in country_mapping.items()}
 
-def process_data(pop_filepath: str, sdg_filepath: str, output_filepath: str):
+def process_data(pop_filepath: str, sdg_filepath: str, kofgi_filepath: str, output_filepath: str):
     """
-    Loads population and SDG data, merges them using country names to IDs,
-    filters for valid countries, and saves the result.
+    Loads population, SDG, and KOFGI data, merges them using country names to IDs,
+    filters for valid countries and year 2023 (for KOFGI), and saves the result.
 
     Args:
         pop_filepath (str): Path to the population CSV file.
         sdg_filepath (str): Path to the SDG CSV file.
+        kofgi_filepath (str): Path to the KOFGI Excel file.
         output_filepath (str): Path to save the merged CSV file.
     """
     try:
@@ -59,30 +61,64 @@ def process_data(pop_filepath: str, sdg_filepath: str, output_filepath: str):
         )
         print(f"SDG data processed. Found {len(df_sdg_processed)} records for mapped countries.")
 
-        # --- Step 3: Merge the two dataframes ---
-        # Using an inner merge to ensure only countries present in *both* datasets
-        # and successfully mapped are included. This effectively "deletes missing values".
-        print("Merging datasets using an inner join on country_id...")
+        # --- Step 3: Load and process KOFGI data ---
+        print(f"Loading KOFGI data from: {kofgi_filepath}")
+        df_kofgi = pd.read_excel(kofgi_filepath)
+
+        # Filter for the year 2023
+        df_kofgi_2023 = df_kofgi[df_kofgi['year'] == 2023].copy()
+
+        # Filter for countries present in our mapping and create 'country_id'
+        # Using 'country' column from KOFGI Excel as per user info
+        df_kofgi_2023_filtered = df_kofgi_2023[df_kofgi_2023['country'].isin(country_name_to_id_map.keys())].copy()
+        df_kofgi_2023_filtered['country_id'] = df_kofgi_2023_filtered['country'].map(country_name_to_id_map)
+
+        # Select and rename columns. 'KOFGI' from KOFGI data becomes 'kofgi_form'.
+        df_kofgi_processed = df_kofgi_2023_filtered[['country_id', 'KOFGI']].rename(
+            columns={'KOFGI': 'kofgi_form'}
+        )
+        print(f"KOFGI data processed. Found {len(df_kofgi_processed)} records for 2023 in mapped countries.")
+
+
+        # --- Step 4: Merge the datasets ---
+        # Start with population data
+        merged_df = df_pop_processed
+
+        # Merge with SDG data
+        print("Merging population and SDG datasets using an inner join on country_id...")
         merged_df = pd.merge(
-            df_pop_processed,
+            merged_df,
             df_sdg_processed,
             on='country_id',
             how='inner'
         )
-        print(f"Datasets merged. Resulting shape: {merged_df.shape}")
+        print(f"Population and SDG data merged. Current shape: {merged_df.shape}")
 
-        # --- Step 4: Ensure the final DataFrame has only the required columns in order ---
-        final_columns = ['country_id', 'avg_age', 'gdp_pc']
+        # Merge with KOFGI data
+        print("Merging with KOFGI data using an inner join on country_id...")
+        merged_df = pd.merge(
+            merged_df,
+            df_kofgi_processed,
+            on='country_id',
+            how='inner'
+        )
+        print(f"All datasets merged. Resulting shape: {merged_df.shape}")
+
+
+        # --- Step 5: Ensure the final DataFrame has only the required columns in order ---
+        # Updated final_columns to include 'kofgi_form'
+        final_columns = ['country_id', 'avg_age', 'gdp_pc', 'kofgi_form']
+        
         # Ensure all columns exist and reorder them
         for col in final_columns:
             if col not in merged_df.columns:
-                # This case should not happen with an inner merge after processing,
-                # but it's a safeguard.
-                merged_df[col] = pd.NA
+                print(f"Warning: Column '{col}' not found after merge. This indicates an issue.")
+                merged_df[col] = pd.NA 
+
         merged_df = merged_df[final_columns]
         print(f"Final DataFrame columns ordered: {final_columns}")
 
-        # --- Step 5: Save the merged dataframe to a new CSV file ---
+        # --- Step 6: Save the merged dataframe to a new CSV file ---
         print(f"Saving merged data to: {output_filepath}")
         merged_df.to_csv(output_filepath, index=False)
         print(f"Successfully created '{output_filepath}'")
@@ -96,11 +132,11 @@ def process_data(pop_filepath: str, sdg_filepath: str, output_filepath: str):
         print(f"Error: One of the input files was not found. Please check the paths. Details: {e}")
     except KeyError as e:
         print(f"Error: Expected column not found - {e}.")
-        print("Please ensure the CSV files have 'geo' and 'OBS_VALUE' columns.")
+        print("Please ensure the CSV files have 'geo' and 'OBS_VALUE' columns, and the Excel file has 'country', 'year', and 'KOFGI' columns.")
     except Exception as e:
         print(f"An unexpected error occurred during data processing: {e}")
 
 # --- Main execution block ---
 if __name__ == "__main__":
     # Call the processing function with the defined file paths
-    process_data(file_pop_data, file_sdg_data, output_csv_path)
+    process_data(file_pop_data, file_sdg_data, file_kofgi_data, output_csv_path)
