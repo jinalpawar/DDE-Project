@@ -19,11 +19,11 @@ POP_LOG_YEAR = 2024
 # Country mapping provided by the user
 country_mapping = {
     1: 'Belgium', 2: 'Denmark', 3: 'Germany', 4: 'Greece', 5: 'Spain',
-    6: 'France', 7: 'Ireland', 8: 'Italy', 10: 'Netherlands', 11: 'United Kingdom',
-    12: 'Portugal', 13: 'Austria', 14: 'Finland', 16: 'Sweden', 20: 'Bulgaria',
-    21: 'Czech Republic', 22: 'Estonia', 23: 'Hungary', 24: 'Latvia', 25: 'Lithuania',
-    26: 'Poland', 27: 'Romania', 28: 'Slovakia', 29: 'Slovenia', 31: 'Croatia',
-    37: 'Malta', 38: 'Luxembourg', 40: 'Cyprus'
+    6: 'France', 7: 'Ireland', 8: 'Italy', 9: 'Netherlands', 10: 'United Kingdom',
+    11: 'Portugal', 12: 'Austria', 13: 'Finland', 14: 'Sweden', 15: 'Bulgaria',
+    16: 'Czech Republic', 17: 'Estonia', 18: 'Hungary', 19: 'Latvia', 20: 'Lithuania',
+    21: 'Poland', 22: 'Romania', 23: 'Slovakia', 24: 'Slovenia', 25: 'Croatia',
+    26: 'Malta', 27: 'Luxembourg', 28: 'Cyprus'
 }
 
 # Inverted mapping for searching by name
@@ -90,19 +90,29 @@ def process_data():
         # --- 6. Process Equal Index Data  ---
         print("Loading Equal Index (EI) data...")        
         df_ei = pd.read_csv(file_ei_data)
-        df_ei["country_id"] = df_ei["Name"].apply(lambda x: name_to_id[x] if x in name_to_id else 0)
-        df_ei = df_ei[df_ei["country_id"] != 0]
+        df_ei["country_id"] = df_ei["Name"].map(name_to_id)
+        df_ei = df_ei[["country_id", "EI Legal"]].dropna(subset=["country_id"]).reset_index(drop=True)
 
         # --- 7. Process ESS Data  ---
         print("Loading ESS data...")        
         df_ess = pd.read_csv(file_ess_data)
         df_ess_cc = pd.read_csv(file_ess_codes)
-        df_ess = df_ess[["cntry", "sclmeet", "rlgblg", "rlgdgr"]].groupby(by="cntry", as_index=False).mean()
-        df_ess["cntry_name"] = df_ess["cntry"].apply(lambda x: df_ess_cc[df_ess_cc["Value "] == x]["Category "].values[0])
-        df_ess["country_id"] = df_ess["cntry_name"].apply(lambda x: name_to_id[x] if x in name_to_id else 0)
-        df_ess = df_ess[df_ess["country_id"] != 0]
 
-        # --- 6. Merge All Data ---
+        df_ess_cc.columns = df_ess_cc.columns.str.strip()
+        df_ess_cc.rename(columns={ "Value" : "cntry" }, inplace=True)
+
+        # Add country names to ESS specific country codes
+        df_ess = pd.merge(df_ess, df_ess_cc, on='cntry', how='inner')
+        df_ess["country_id"] = df_ess["Category"].map(name_to_id)
+
+        # Multiply responses with provided weight variable
+        df_ess["sclmeet_wg"] = df_ess["sclmeet"] * df_ess["anweight"]
+        df_ess["rlgblg_wg"] = df_ess["rlgblg"] * df_ess["anweight"]
+        df_ess["rlgdgr_wg"] = df_ess["rlgdgr"] * df_ess["anweight"]
+
+        df_ess = df_ess[["country_id", "sclmeet_wg", "rlgblg_wg", "rlgdgr_wg"]].groupby(by="country_id", as_index=False).mean()
+
+        # --- 8. Merge All Data ---
         print("Merging all datasets...")
         # Ensure ID columns are integers for matching
         dataframes = [df_pop_processed, df_sdg_processed, ches_processed, dhl_processed, df_log_pop_processed, df_ess, df_ei]
@@ -113,14 +123,14 @@ def process_data():
         for next_df in dataframes[1:]:
             merged_df = pd.merge(merged_df, next_df, on='country_id', how='inner')
 
-        # --- 7. Final Formatting ---
+        # --- 9. Final Formatting ---
         # Add the country name column based on the mapping
         merged_df['country_name'] = merged_df['country_id'].map(country_mapping)
 
         # Reorder columns as requested
         final_columns = [
             'country_id', 'country_name', 'avg_age', 'population', 
-            'log_population', 'gdp_pc', 'weighted_galtan', 'dhl_index'
+            'log_population', 'gdp_pc', 'weighted_galtan', 'dhl_index', 'sclmeet_wg', 'rlgblg_wg', 'rlgdgr_wg', 'EI Legal'
         ]
         merged_df = merged_df[final_columns]
 
