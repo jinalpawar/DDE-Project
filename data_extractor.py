@@ -6,7 +6,10 @@ import os
 file_pop_data = 'data/eq_pop04_page_linear.csv'
 file_sdg_data = 'data/sdg_08_10_page_linear.csv'
 file_ches_data = 'data/1999-2024_CHES_dataset_meansV2 (1).csv'
-file_dhl_data = 'data/DHL_GCS_EU_filtered.csv' 
+file_dhl_data = 'data/DHL_GCS_EU_filtered.csv'
+file_ei_data = 'data/equaldex_equality_index-2024-dec.csv'
+file_ess_data = 'data/ESS11e04_1.csv'
+file_ess_codes = 'data/ess_country_codes.csv'
 output_csv_path = 'output/combined_data.csv'
 
 # Eurostat URL for total population (log calculation)
@@ -84,10 +87,25 @@ def process_data():
         df_log_pop_processed["log_population"] = np.log(df_log_pop_processed["population"])
         df_log_pop_processed = df_log_pop_processed[['country_id', 'population', 'log_population']]
 
+        # --- 6. Process Equal Index Data  ---
+        print("Loading Equal Index (EI) data...")        
+        df_ei = pd.read_csv(file_ei_data)
+        df_ei["country_id"] = df_ei["Name"].apply(lambda x: name_to_id[x] if x in name_to_id else 0)
+        df_ei = df_ei[df_ei["country_id"] != 0]
+
+        # --- 7. Process ESS Data  ---
+        print("Loading ESS data...")        
+        df_ess = pd.read_csv(file_ess_data)
+        df_ess_cc = pd.read_csv(file_ess_codes)
+        df_ess = df_ess[["cntry", "sclmeet", "rlgblg", "rlgdgr"]].groupby(by="cntry", as_index=False).mean()
+        df_ess["cntry_name"] = df_ess["cntry"].apply(lambda x: df_ess_cc[df_ess_cc["Value "] == x]["Category "].values[0])
+        df_ess["country_id"] = df_ess["cntry_name"].apply(lambda x: name_to_id[x] if x in name_to_id else 0)
+        df_ess = df_ess[df_ess["country_id"] != 0]
+
         # --- 6. Merge All Data ---
         print("Merging all datasets...")
         # Ensure ID columns are integers for matching
-        dataframes = [df_pop_processed, df_sdg_processed, ches_processed, dhl_processed, df_log_pop_processed]
+        dataframes = [df_pop_processed, df_sdg_processed, ches_processed, dhl_processed, df_log_pop_processed, df_ess, df_ei]
         for df in dataframes:
             df['country_id'] = df['country_id'].astype(int)
 
@@ -113,6 +131,7 @@ def process_data():
 
     except Exception as e:
         print(f"An error occurred: {e}")
+        raise e from e
 
 if __name__ == "__main__":
     process_data()
