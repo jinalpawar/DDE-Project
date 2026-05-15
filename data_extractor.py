@@ -83,15 +83,28 @@ def process_ess_survey_data() -> pd.DataFrame:
     ess_df['anweight'] = pd.to_numeric(ess_df['anweight'], errors='coerce')
     for col in weighted_columns:
         ess_df[col] = pd.to_numeric(ess_df[col], errors='coerce')
-        ess_df[f'{col}_wg'] = ess_df[col] * ess_df['anweight']
+    
+    # Drop missing countries to speed up processing
+    df_valid = ess_df.dropna(subset=['country_id']).copy()
 
-    mean_cols = weighted_columns + [f'{col}_wg' for col in weighted_columns]
-    summary = (
-        ess_df
-        .dropna(subset=['country_id'])
-        .groupby('country_id', as_index=False)[mean_cols]
-        .mean()
-    )
+    for col in weighted_columns:
+        # weigthing score using ESS anweight
+        df_valid[f'{col}_prod'] = df_valid[col] * df_valid['anweight']
+        
+        # columns on anweights not null 
+        df_valid[f'{col}_valid_wt'] = df_valid['anweight'].where(df_valid[col].notna())
+
+   # summing rows by country
+    agg_cols = [f'{col}_prod' for col in weighted_columns] + [f'{col}_valid_wt' for col in weighted_columns]
+    summary = df_valid.groupby('country_id', as_index=False)[agg_cols].sum()
+
+    # final weighted mean (weigthed value/sum of weights)
+    for col in weighted_columns:
+        summary[f'{col}_wg'] = summary[f'{col}_prod'] / summary[f'{col}_valid_wt']
+
+# final extraction
+    final_cols = ['country_id'] + [f'{col}_wg' for col in weighted_columns]
+    summary = summary[final_cols]
     summary['country_name'] = summary['country_id'].map(country_mapping)
     return summary
 
