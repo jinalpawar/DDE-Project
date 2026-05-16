@@ -9,6 +9,7 @@ file_ches_data = 'data/1999-2024_CHES_dataset_meansV2 (1).csv'
 file_dhl_data = 'data/DHL_GCS_EU_filtered.csv'
 file_equal_dex_data = 'data/equaldex_equality_index-2024-dec.csv'
 file_ess_data = 'data/ESS11e04_1.csv'
+file_n_eu_years = 'data/N_eu_years.csv'
 file_ess_country_codes = 'data/ess_country_codes.csv'
 output_csv_path = 'output/combined_data.csv'
 output_ess_summary = 'output/ess_country_level_means.csv'
@@ -136,6 +137,12 @@ def process_data() -> None:
         df_pop_processed = df_pop_avg_age.dropna(subset=['country_id'])[['country_id', 'OBS_VALUE']]
         df_pop_processed.rename(columns={'OBS_VALUE': 'avg_age'}, inplace=True)
 
+        print("Loading N_eu_years data…")
+        df_n_eu = pd.read_csv(file_n_eu_years, sep=';')
+        df_n_eu['Country'] = df_n_eu['Country'].replace(name_corrections)
+        df_n_eu['country_id'] = df_n_eu['Country'].map(name_to_id)
+        df_n_eu_processed = df_n_eu.dropna(subset=['country_id'])[['country_id', 'N_euyears']]
+        
         print("Loading SDG (gdp per capita) data…")
         df_sdg = pd.read_csv(file_sdg_data)
         df_sdg['geo'] = df_sdg['geo'].replace(name_corrections)
@@ -150,6 +157,11 @@ def process_data() -> None:
             calculate_country_weighted_galtan, include_groups=False
         )
         ches_processed = ches_scores.reset_index(name='weighted_galtan').rename(columns={'country': 'country_id'})
+        ches_eastwest = (
+        parl_gov_2024.groupby('country', as_index=False)['eastwest']
+        .first()
+        .rename(columns={'country': 'country_id'}))
+
 
         print("Loading DHL index data…")
         df_dhl = pd.read_csv(file_dhl_data, sep=';')
@@ -182,11 +194,14 @@ def process_data() -> None:
             df_pop_processed,
             df_sdg_processed,
             ches_processed,
+            ches_eastwest,
             dhl_processed,
             df_log_pop_processed,
             ess_merge_df,
             equal_dex_processed,
+            df_n_eu_processed
         ]
+    
         for df in dataframes:
             df['country_id'] = df['country_id'].astype(int)
 
@@ -197,7 +212,7 @@ def process_data() -> None:
         final_columns = [
             'country_id', 'country_name', 'avg_age', 'population',
             'log_population', 'gdp_pc', 'weighted_galtan', 'dhl_index',
-            'sclmeet_wg', 'rlgblg_wg', 'rlgdgr_wg', 'ei_legal'
+            'sclmeet_wg', 'rlgblg_wg', 'rlgdgr_wg', 'ei_legal','N_euyears','eastwest'
         ]
         merged_df = merged_df[final_columns]
 
