@@ -18,12 +18,33 @@ POP_LOG_YEAR = 2024
 
 # Country mapping provided by the user
 country_mapping = {
-    1: 'Belgium', 2: 'Denmark', 3: 'Germany', 4: 'Greece', 5: 'Spain',
-    6: 'France', 7: 'Ireland', 8: 'Italy', 9: 'Netherlands', 10: 'United Kingdom',
-    11: 'Portugal', 12: 'Austria', 13: 'Finland', 14: 'Sweden', 15: 'Bulgaria',
-    16: 'Czech Republic', 17: 'Estonia', 18: 'Hungary', 19: 'Latvia', 20: 'Lithuania',
-    21: 'Poland', 22: 'Romania', 23: 'Slovakia', 24: 'Slovenia', 25: 'Croatia',
-    26: 'Malta', 27: 'Luxembourg', 28: 'Cyprus'
+    1: 'Belgium',
+    2: 'Denmark',
+    3: 'Germany',
+    4: 'Greece',
+    5: 'Spain',
+    6: 'France',
+    7: 'Ireland',
+    8: 'Italy',
+    10: 'Netherlands',
+    12: 'Portugal',
+    13: 'Austria',
+    14: 'Finland',
+    16: 'Sweden',
+    20: 'Bulgaria',
+    21: 'Czech Republic',
+    22: 'Estonia',
+    23: 'Hungary',
+    24: 'Latvia',
+    25: 'Lithuania',
+    26: 'Poland',
+    27: 'Romania',
+    28: 'Slovakia',
+    29: 'Slovenia',
+    31: 'Croatia',
+    37: 'Malta',
+    38: 'Luxembourg',
+    40: 'Cyprus'
 }
 
 # Inverted mapping for searching by name
@@ -61,8 +82,10 @@ def process_data():
         parl_gov = pd.read_csv(file_ches_data)
         parl_gov_2024 = parl_gov[parl_gov['year'] == 2024].copy()
         ches_scores = parl_gov_2024.groupby('country').apply(calculate_country_weighted_galtan, include_groups=False)
+        parl_gov_2024.groupby("country").first()["eastwest"].to_dict()
         ches_processed = ches_scores.reset_index(name='weighted_galtan').rename(columns={'country': 'country_id'})
-
+        ches_processed["eastwest"] = ches_processed["country_id"].map(parl_gov_2024.groupby("country").first()["eastwest"].to_dict())
+        
         # --- 4. Process DHL Data ---
         print("Loading DHL index data...")
         df_dhl = pd.read_csv(file_dhl_data, sep=';')
@@ -121,7 +144,7 @@ def process_data():
 
         merged_df = dataframes[0]
         for next_df in dataframes[1:]:
-            merged_df = pd.merge(merged_df, next_df, on='country_id', how='inner')
+            merged_df = pd.merge(merged_df, next_df, on='country_id', how='left')
 
         # --- 9. Final Formatting ---
         # Add the country name column based on the mapping
@@ -130,7 +153,7 @@ def process_data():
         # Reorder columns as requested
         final_columns = [
             'country_id', 'country_name', 'avg_age', 'population', 
-            'log_population', 'gdp_pc', 'weighted_galtan', 'dhl_index', 'sclmeet_wg', 'rlgblg_wg', 'rlgdgr_wg', 'EI Legal'
+            'log_population', 'gdp_pc', 'weighted_galtan', 'dhl_index', 'sclmeet_wg', 'rlgblg_wg', 'rlgdgr_wg', 'EI Legal', 'eastwest'
         ]
         merged_df = merged_df[final_columns]
 
